@@ -96,6 +96,18 @@ def make_dataset(cfg: TrainPipelineConfig) -> LeRobotDataset | MultiLeRobotDatas
             revision=cfg.dataset.revision,
             video_backend=cfg.dataset.video_backend,
         )
+        if cfg.policy.type == "vqbet":
+            image_features = [key for key in dataset.features.keys() if key.startswith("observation.image")]
+            if len(image_features) > 1:
+                # 保留第一个图像特征，删除其他的
+                keep_feature = image_features[0]
+                for feature in image_features[1:]:
+                    del dataset.features[feature]
+                    #del dataset.meta.features[feature]
+            print(f"dataset.features: {dataset.features}")
+            print(f"dataset.meta.features: {dataset.meta.features}")
+                    
+
     else:
         raise NotImplementedError("The MultiLeRobotDataset isn't supported for now.")
         dataset = MultiLeRobotDataset(

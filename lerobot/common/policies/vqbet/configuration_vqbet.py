@@ -92,7 +92,7 @@ class VQBeTConfig(PreTrainedConfig):
     """
 
     # Inputs / output structure.
-    n_obs_steps: int = 5
+    n_obs_steps: int = 5   #这个意味着从当前step往前推5个step的observation
     n_action_pred_token: int = 3
     action_chunk_size: int = 5
 
@@ -141,6 +141,7 @@ class VQBeTConfig(PreTrainedConfig):
     optimizer_vqvae_weight_decay: float = 1e-4
     scheduler_warmup_steps: int = 500
 
+    input_camera: list[str] = field(default_factory=lambda: ["observation.image_0"])
     def __post_init__(self):
         super().__post_init__()
 
@@ -168,7 +169,8 @@ class VQBeTConfig(PreTrainedConfig):
         # Note: this check was previously performed inside VQBeTRgbEncoder in the form of
         # assert len(image_keys) == 1
         if not len(self.image_features) == 1:
-            raise ValueError("You must provide only one image among the inputs.")
+            #import pdb; pdb.set_trace()         
+            print(f"Error: You must provide only one image among the inputs. but you got {len(self.image_features)}")
 
         if self.crop_shape is not None:
             for key, image_ft in self.image_features.items():

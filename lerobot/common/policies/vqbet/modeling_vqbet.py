@@ -57,9 +57,10 @@ class VQBeTPolicy(PreTrainedPolicy):
                 that they will be passed with a call to `load_state_dict` before the policy is used.
         """
         super().__init__(config)
+        #import pdb; pdb.set_trace()
         config.validate_features()
         self.config = config
-
+     
         self.normalize_inputs = Normalize(config.input_features, config.normalization_mapping, dataset_stats)
         self.normalize_targets = Normalize(
             config.output_features, config.normalization_mapping, dataset_stats
@@ -135,6 +136,7 @@ class VQBeTPolicy(PreTrainedPolicy):
         batch = self.normalize_inputs(batch)
         batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
         batch["observation.images"] = torch.stack([batch[key] for key in self.config.image_features], dim=-4)
+
         # Note: It's important that this happens after stacking the images into a single key.
         self._queues = populate_queues(self._queues, batch)
 
@@ -145,7 +147,26 @@ class VQBeTPolicy(PreTrainedPolicy):
             )
 
         if len(self._queues["action"]) == 0:
-            batch = {k: torch.stack(list(self._queues[k]), dim=1) for k in batch if k in self._queues}
+            batch = {k: torch.stack(list(self._queues[k]), dim=0) for k in batch if k in self._queues}
+
+            print("Before stack, queue contents:")
+            for key, queue in self._queues.items():
+                if len(queue) > 0:
+                    print(f"  Queue '{key}' has {len(queue)} items:")
+                    for i, item in enumerate(queue):
+                        if isinstance(item, torch.Tensor):
+                            print(f"    Item {i}: shape={item.shape}, dtype={item.dtype}")
+                        else:
+                            print(f"    Item {i}: type={type(item)}")
+            for key, value in batch.items():
+                print(f"after stack {key}: {value.shape}")
+            """([5, 1, 3, 480, 480])
+
+                ([5, 7])
+            """
+
+            batch["observation.images"] = batch["observation.images"].unsqueeze(0)
+            batch["observation.state"] = batch["observation.state"].unsqueeze(0)
             actions = self.vqbet(batch, rollout=True)[:, : self.config.action_chunk_size]
 
             # the dimension of returned action is (batch_size, action_chunk_size, action_dim)
@@ -162,6 +183,16 @@ class VQBeTPolicy(PreTrainedPolicy):
         batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
         batch["observation.images"] = torch.stack([batch[key] for key in self.config.image_features], dim=-4)
         batch = self.normalize_targets(batch)
+        print(f"batch: {batch.keys()}")
+        
+        print(f"{'observation.images'}: {batch['observation.images'].shape}")
+        print(f"{'observation.state'}: {batch['observation.state'].shape}")
+
+        """
+        observation.images: torch.Size([20, 5, 1, 3, 480, 480])
+        observation.state: torch.Size([20, 5, 7])
+        [batch step image channel height width]
+        """
         # VQ-BeT discretizes action using VQ-VAE before training BeT (please refer to section 3.2 in the VQ-BeT paper https://arxiv.org/pdf/2403.03181)
         if not self.vqbet.action_head.vqvae_model.discretized.item():
             # loss: total loss of training RVQ

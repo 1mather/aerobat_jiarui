@@ -198,32 +198,84 @@ def wrap(config_path: Path | None = None):
     """
 
     def wrapper_outer(fn):
-        @wraps(fn)
+        """
+        装饰器函数，包装原始函数以便自动处理配置解析和命令行参数。
+        这个函数是一个闭包，返回内部的包装函数。
+        
+        参数:
+            fn (callable): 要装饰的目标函数，通常是接受配置对象作为第一个参数的主函数。
+        
+        返回:
+            callable: 包装后的函数，能够处理命令行参数并初始化配置对象。
+
+        为什么要包装两层
+        """
+        @wraps(fn)  # 保留被装饰函数的元数据（如函数名、文档字符串等）
         def wrapper_inner(*args, **kwargs):
+            """
+            内部包装函数，实际处理参数解析和函数调用逻辑。
+            
+            参数:
+                *args: 传递给原始函数的位置参数
+                **kwargs: 传递给原始函数的关键字参数
+                
+            返回:
+                任何类型: 原始函数的返回值
+            """
+            # 获取原始函数的参数规格
             argspec = inspect.getfullargspec(fn)
+            # 获取第一个参数的类型注解，这应该是配置对象的类型
             argtype = argspec.annotations[argspec.args[0]]
+            
+            # 检查是否已经传入了配置对象
             if len(args) > 0 and type(args[0]) is argtype:
+                # 如果第一个参数已经是正确类型的配置对象，直接使用它
                 cfg = args[0]
+                # 移除第一个参数，因为它将单独传递给原始函数
                 args = args[1:]
             else:
+                # 如果没有传入配置对象，需要从命令行参数创建一个
+                
+                # 获取命令行参数
                 cli_args = sys.argv[1:]
+                
+                # 解析插件参数，这些是用于动态加载功能的特殊参数
                 plugin_args = parse_plugin_args(PLUGIN_DISCOVERY_SUFFIX, cli_args)
                 for plugin_cli_arg, plugin_path in plugin_args.items():
                     try:
+                        # 尝试加载插件
                         load_plugin(plugin_path)
                     except PluginLoadError as e:
-                        # add the relevant CLI arg to the error message
+                        # 如果插件加载失败，添加相关命令行参数到错误信息中
                         raise PluginLoadError(f"{e}\nFailed plugin CLI Arg: {plugin_cli_arg}") from e
+                    # 从命令行参数中过滤掉已处理的插件参数
                     cli_args = filter_arg(plugin_cli_arg, cli_args)
+                
+                # 从命令行参数中解析配置文件路径
                 config_path_cli = parse_arg("config_path", cli_args)
+                
+                # 检查配置类型是否有获取路径字段的方法
                 if has_method(argtype, "__get_path_fields__"):
+                    # 获取需要转换为Path对象的字段
                     path_fields = argtype.__get_path_fields__()
+                    # 过滤掉路径相关的命令行参数
                     cli_args = filter_path_args(path_fields, cli_args)
+                
+                # 检查配置类型是否有从预训练加载的方法，且是否提供了配置路径
                 if has_method(argtype, "from_pretrained") and config_path_cli:
+                    # 过滤掉配置路径参数，因为它将单独使用
                     cli_args = filter_arg("config_path", cli_args)
+                    # 从预训练模型加载配置
                     cfg = argtype.from_pretrained(config_path_cli, cli_args=cli_args)
                 else:
+                    # 使用draccus解析器创建配置对象
+                    # config_path是一个未在代码片段中定义的变量，可能是全局变量或默认路径
                     cfg = draccus.parse(config_class=argtype, config_path=config_path, args=cli_args)
+                    """
+                    
+                    """
+            
+            # 使用解析好的配置对象调用原始函数
             response = fn(cfg, *args, **kwargs)
             return response
 
